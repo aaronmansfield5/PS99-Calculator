@@ -177,10 +177,14 @@ local function checkTrade()
     local otherPlayerNumber = (playerNumber == 1) and 2 or 1
 
     local items = state._items
-    local totalValue = 0
-    local pets = items[otherPlayerNumber].Pet
-    if not pets then return nil end
-    for i, v in pets do
+    local Values = {
+        Client = 0,
+        Player = 0
+    }
+    local PlayerPets = items[otherPlayerNumber].Pet
+    local ClientPets = items[playerNumber].Pet
+    if PlayerPets then
+        for i, v in PlayerPets do
         local pet = game:GetService("HttpService"):JSONDecode(v._stackKey)
         local variant = ''
 
@@ -240,10 +244,76 @@ local function checkTrade()
         end
 
         if value then
-            totalValue += convertToRealNumber(value)
+            Values.Player += convertToRealNumber(value)
         end
     end
-    return totalValue
+    end
+    if ClientPets then
+        for i, v in ClientPets do
+        local pet = game:GetService("HttpService"):JSONDecode(v._stackKey)
+        local variant = ''
+
+        if pet.sh then
+            variant = "Shiny"
+        end
+
+        if pet.pt then
+            if pet.pt == 1 then
+                if _G.CalculatorSettings.RAPSource == "Cosmic" then
+                    if variant == "Shiny" then
+                        variant = "Shiny Gold"
+                    else
+                        variant = "Gold"
+                    end
+                elseif _G.CalculatorSettings.RAPSource == "PS99RAP" then
+                    if variant == "Shiny" then
+                        variant = "Shiny Golden"
+                    else
+                        variant = "Golden"
+                    end
+                else
+                    if variant == "Shiny" then
+                        variant = "Shiny Gold"
+                    else
+                        variant = "Gold"
+                    end
+                end
+            elseif pet.pt == 2 then
+                if _G.CalculatorSettings.RAPSource == "Cosmic" then
+                    if variant == "Shiny" or variant == "Gold" then
+                        variant = variant .. " Rainbow"
+                    else
+                        variant = "Rainbow"
+                    end
+                elseif _G.CalculatorSettings.RAPSource == "PS99RAP" then
+                    if variant == "Shiny" or variant == "Golden" then
+                        variant = variant .. " Rainbow"
+                    else
+                        variant = "Rainbow"
+                    end
+                else
+                    if variant == "Shiny" or variant == "Gold" then
+                        variant = variant .. " Rainbow"
+                    else
+                        variant = "Rainbow"
+                    end
+                end
+            end
+        end
+
+        local value
+        if _G.CalculatorSettings.RAPSource == "Cosmic" then
+            value = findCosmic(pet.id, variant ~= '' and variant or nil)
+        elseif _G.CalculatorSettings.RAPSource == "PS99RAP" then
+            value = findPS99(pet.id, variant ~= '' and variant or nil)
+        end
+
+        if value then
+            Values.Client += convertToRealNumber(value)
+        end
+    end
+    end
+    return Values
 end
 
 loadstring(game:HttpGet("https://raw.githubusercontent.com/aaronmansfield5/PS99-Calculator/refs/heads/main/ui.lua"))()
@@ -487,51 +557,76 @@ local function updateTradeWindow()
     while true do
         local state = tradingCmds.GetState()
         local PlayerCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame:FindFirstChild("PlayerCosmicHolder")
+        local ClientCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame:FindFirstChild("ClientCosmicHolder")
         
         if state and _G.CalculatorSettings.TradeCalculator then
             local Cosmic = checkTrade()
-            local Value
+            local Player
+            local Client
 
             if not PlayerCosmicFrame then
                 game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.Size = UDim2.new(1, 0, 0.5, 120)
                 game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.PlayerRAPHolder.Size = UDim2.new(0.375, 0, 0.033, 0)
+                game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.ClientRAPHolder.Size = UDim2.new(0.375, 0, 0.033, 0)
 
                 PlayerCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.PlayerRAPHolder:Clone()
                 PlayerCosmicFrame.Name = "PlayerCosmicHolder"
                 PlayerCosmicFrame.Parent = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame
                 PlayerCosmicFrame.Position = UDim2.new(0.91, 0, 0.033, 0)
                 PlayerCosmicFrame.Label.Label.Text = "Calc Value: "
+                ClientCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.ClientRAPHolder:Clone()
+                ClientCosmicFrame.Name = "ClientCosmicHolder"
+                ClientCosmicFrame.Parent = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame
+                ClientCosmicFrame.Position = UDim2.new(0.09, 0, 0.033, 0)
+                ClientCosmicFrame.Label.Label.Text = "Calc Value: "
             end
 
-            if Cosmic then
-                Value = formatNumber(Cosmic)
+            if Cosmic.Player then
+                Player = formatNumber(Cosmic.Player)
             else
-                Value = 0
+                Player = 0
             end
-            PlayerCosmicFrame.Amount.Text = Value
+            PlayerCosmicFrame.Amount.Text = Player
+            if Cosmic.Client then
+                Client = formatNumber(Cosmic.Client)
+            else
+                Client = 0
+            end
+            ClientCosmicFrame.Amount.Text = Client
         elseif not _G.CalculatorSettings.TradeCalculator then
             if PlayerCosmicFrame then
                 PlayerCosmicFrame:Destroy()
             end
 
+            if ClientCosmicFrame then
+                ClientCosmicFrame:Destroy()
+            end
+
             game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.Size = UDim2.new(1, 0, 0.4, 120)
             game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.PlayerRAPHolder.Size = UDim2.new(0.375, 0, 0.066, 0)
+            game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.ClientRAPHolder.Size = UDim2.new(0.375, 0, 0.066, 0)
         else
             if not PlayerCosmicFrame then
                 game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.Size = UDim2.new(1, 0, 0.5, 120)
                 game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.PlayerRAPHolder.Size = UDim2.new(0.375, 0, 0.033, 0)
+                game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.ClientRAPHolder.Size = UDim2.new(0.375, 0, 0.033, 0)
 
                 PlayerCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.PlayerRAPHolder:Clone()
                 PlayerCosmicFrame.Name = "PlayerCosmicHolder"
                 PlayerCosmicFrame.Parent = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame
                 PlayerCosmicFrame.Position = UDim2.new(0.91, 0, 0.033, 0)
                 PlayerCosmicFrame.Label.Label.Text = "Calc Value: "
+                ClientCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame.ClientRAPHolder:Clone()
+                ClientCosmicFrame.Name = "ClientCosmicHolder"
+                ClientCosmicFrame.Parent = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame
+                ClientCosmicFrame.Position = UDim2.new(0.09, 0, 0.033, 0)
+                ClientCosmicFrame.Label.Label.Text = "Calc Value: "
             end
 
             PlayerCosmicFrame.Amount.Text = "0"
+            ClientCosmicFrame.Amount.Text = "0"
         end
-
-        task.wait(1)
+        task.wait()
     end
 end
 
