@@ -7,12 +7,18 @@ _G.CalculatorSettings = {
     RAPSource = "Cosmic"
 }
 
+_G.PetValueCache = {
+    Cosmic = {},
+    PS99Rap = {}
+}
+
 local tradingCmds = require(game.ReplicatedStorage.Library.Client.TradingCmds)
 local teleportButton = game:GetService("Players").LocalPlayer.PlayerGui.MainLeft.Left.Tools.Teleport
 local cosmicButton = game:GetService("Players").LocalPlayer.PlayerGui.MainLeft.Left.Tools:FindFirstChild("Cosmic")
 local TweenService = game:GetService("TweenService")
 local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local RunService = game:GetService("RunService")
+local HttpService = HttpService
 
 local GetSave = function()
     return require(game.ReplicatedStorage.Library.Client.Save).Get()
@@ -65,62 +71,6 @@ local function floorToDecimalPlace(number, decimalPlaces)
     return math.floor(number * multiplier) / multiplier
 end
 
-local function findCosmic(pet, variant)
-    local URL = "https://petsimulatorvalues.com/details.php"
-    if variant then
-        URL = URL .. "?Name=" .. variant:gsub(" ", "+") .. "+" .. pet:gsub(" ", "+")
-    else
-        URL = URL .. "?Name=" .. pet:gsub(" ", "+")
-    end
-
-    local response = request({
-        Method = "GET",
-        Url = URL
-    })
-
-    local value = response.Body:match('<[Ss]pan class="float%-left"%s*>value</[Ss]pan>%s*<[Ss]pan class="float%-right"%s*>(.-)</[Ss]pan>')
-
-    if not value or value == "" then return nil end
-
-    return value
-end
-
-local function getLatestValue(data)
-    local latestTime = -math.huge
-    local latestValue = nil
-
-    for _, pair in ipairs(data.data) do
-        local timestamp, value = pair[1], pair[2]
-        if timestamp > latestTime then
-            latestTime = timestamp
-            latestValue = value
-        end
-    end
-
-    return latestValue
-end
-
-local function findPS99(pet, variant)
-    local URL = "https://ps99rap.com/api/get/rap?id="
-    if variant then
-        URL = URL .. variant:gsub(" ", "%%20") .. "%20" .. pet:gsub(" ", "%%20")
-    else
-        URL = URL .. pet:gsub(" ", "%%20")
-    end
-
-    URL = string.lower(URL)
-
-    local response = request({
-        Method = "GET",
-        Url = URL
-    })
-
-    local body = game:GetService("HttpService"):JSONDecode(response.Body)
-    local value = getLatestValue(body)
-
-    return value
-end
-
 local function convertToRealNumber(value)
     if type(value) == "number" then
         return value
@@ -142,6 +92,39 @@ local function convertToRealNumber(value)
     end
 end
 
+local function findCosmic(pet, variant)
+    local searchKey = variant and (variant .. " " .. pet) or pet
+    for _, entry in pairs(_G.PetValueCache.Cosmic) do
+        if entry.Name == searchKey then
+            return entry.Rap
+        end
+    end
+
+    local URL = "https://petsimulatorvalues.com/details.php?Name=" .. (variant and (variant:gsub(" ", "+") .. "+" .. pet:gsub(" ", "+")) or pet:gsub(" ", "+"))
+    local response = request({
+        Method = "GET",
+        Url = URL
+    })
+
+    local value = response.Body:match('<[Ss]pan class="float%-left"%s*>value</[Ss]pan>%s*<[Ss]pan class="float%-right"%s*>(.-)</[Ss]pan>')
+    if not value or value == "" then return nil end
+
+    local convertedValue = convertToRealNumber(value)
+    table.insert(_G.PetValueCache.Cosmic, { Name = searchKey, Rap = convertedValue })
+
+    return convertedValue
+end
+
+local function findPS99(pet, variant)
+    local searchKey = variant and (variant .. " " .. pet) or pet
+    for _, entry in pairs(_G.PetValueCache.PS99Rap) do
+        if entry.Name == searchKey then
+            return entry.Rap
+        end
+    end
+    return nil
+end
+
 local function formatNumber(num)
     local suffixes = {"", "K", "M", "B", "T", "P", "E", "Z", "Y", "Q"}  -- Suffixes for 10^0 to 10^15
     local scale = 0
@@ -159,6 +142,23 @@ local function formatNumber(num)
         return string.format("%.2f", num) .. suffixes[scale + 1]
     else
         return string.format("%d", math.floor(num)) .. suffixes[scale + 1]
+    end
+end
+
+function initCache()
+    local success, err = pcall(function()
+        local response = request({
+            Url = "https://ps99rap.com/api/get/items",
+            Method = "GET"
+        })
+        local body = HttpService:JSONDecode(response.Body).data
+        for i, entry in body do
+            _G.PetValueCache.PS99Rap[i] = entry
+        end
+    end)
+
+    if not success then
+        initCache()
     end
 end
 
@@ -185,7 +185,7 @@ local function checkTrade()
     local ClientPets = items[playerNumber].Pet
     if PlayerPets then
         for i, v in PlayerPets do
-        local pet = game:GetService("HttpService"):JSONDecode(v._stackKey)
+        local pet = HttpService:JSONDecode(v._stackKey)
         local variant = ''
 
         if pet.sh then
@@ -250,7 +250,7 @@ local function checkTrade()
     end
     if ClientPets then
         for i, v in ClientPets do
-        local pet = game:GetService("HttpService"):JSONDecode(v._stackKey)
+        local pet = HttpService:JSONDecode(v._stackKey)
         local variant = ''
 
         if pet.sh then
@@ -433,10 +433,10 @@ Buttons.Discord.Toggle.Button.MouseButton1Click:Connect(
                     ["Content-Type"] = "application/json",
                     Origin = "https://discord.com"
                 },
-                Body = game:GetService("HttpService"):JSONEncode(
+                Body = HttpService:JSONEncode(
                     {
                         cmd = "INVITE_BROWSER",
-                        nonce = game:GetService("HttpService"):GenerateGUID(false),
+                        nonce = HttpService:GenerateGUID(false),
                         args = {code = "Nd7geN8x6C"}
                     }
                 )
@@ -555,6 +555,9 @@ Buttons.TradeProvider.Toggle.Button.MouseButton1Click:Connect(
 
 local function updateTradeWindow()
     while true do
+        if not next(_G.PetValueCache.PS99Rap) then
+            initCache()
+        end
         local state = tradingCmds.GetState()
         local PlayerCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame:FindFirstChild("PlayerCosmicHolder")
         local ClientCosmicFrame = game:GetService("Players").LocalPlayer.PlayerGui.TradeWindow.Frame:FindFirstChild("ClientCosmicHolder")

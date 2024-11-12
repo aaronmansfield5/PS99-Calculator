@@ -1,4 +1,3 @@
-
 if not game.Players.LocalPlayer.PlayerGui:FindFirstChild("Cosmic") then
     local G2L = {}
 
